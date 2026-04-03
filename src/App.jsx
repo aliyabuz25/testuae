@@ -4,6 +4,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import AOS from 'aos';
 import { ClipLoader } from 'react-spinners';
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import {
   conflictZones,
   donationTiers,
@@ -65,6 +67,23 @@ const donationCampaign = {
   goal: 50000,
   raised: 32500,
 };
+
+const DONATION_TOAST_ICON =
+  'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Money%20Bag.png';
+
+function DonationToastContent({ title, body }) {
+  return (
+    <div className="site-toastify-card">
+      <div className="site-toastify-card__icon-shell" aria-hidden="true">
+        <img className="site-toastify-card__icon" src={DONATION_TOAST_ICON} alt="" />
+      </div>
+      <div className="site-toastify-card__copy">
+        <strong>{title}</strong>
+        <span>{body}</span>
+      </div>
+    </div>
+  );
+}
 
 const fallbackTickerItems = [
   'Daily Crisis • Sudan conflict displacement update',
@@ -619,12 +638,17 @@ function App() {
   const router = useRouter();
   const pathname = usePathname() || '/';
   const heroVideoRef = useRef(null);
+  const heroShellRef = useRef(null);
+  const heroAutoPausedRef = useRef(false);
+  const donationFeedReadyRef = useRef(false);
+  const latestDonationTimestampRef = useRef('');
   const [isSplashVisible, setIsSplashVisible] = useState(true);
+  const [isSplashExiting, setIsSplashExiting] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [donationOpen, setDonationOpen] = useState(false);
   const [volunteerRole, setVolunteerRole] = useState(null);
   const [isScrolled, setIsScrolled] = useState(false);
-  const [heroDepth, setHeroDepth] = useState(0);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const [isHeroMuted, setIsHeroMuted] = useState(true);
   const [isHeroPlaying, setIsHeroPlaying] = useState(true);
   const [pageStage, setPageStage] = useState('is-visible');
@@ -634,7 +658,6 @@ function App() {
   const [customAmount, setCustomAmount] = useState('');
   const [message, setMessage] = useState('');
   const [formError, setFormError] = useState('');
-  const [toast, setToast] = useState('');
   const [volunteerForm, setVolunteerForm] = useState(emptyVolunteerForm);
   const [volunteerError, setVolunteerError] = useState('');
   const [volunteerSuccessRole, setVolunteerSuccessRole] = useState(null);
@@ -652,39 +675,79 @@ function App() {
   }, [regionZones]);
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => setIsSplashVisible(false), 1200);
-    return () => window.clearTimeout(timeoutId);
+    if (prefersReducedMotion) {
+      const timeoutId = window.setTimeout(() => setIsSplashVisible(false), 520);
+      return () => window.clearTimeout(timeoutId);
+    }
+
+    const exitTimeoutId = window.setTimeout(() => setIsSplashExiting(true), 820);
+    const hideTimeoutId = window.setTimeout(() => setIsSplashVisible(false), 1560);
+
+    return () => {
+      window.clearTimeout(exitTimeoutId);
+      window.clearTimeout(hideTimeoutId);
+    };
+  }, [prefersReducedMotion]);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const updatePreference = () => setPrefersReducedMotion(mediaQuery.matches);
+
+    updatePreference();
+    mediaQuery.addEventListener('change', updatePreference);
+
+    return () => {
+      mediaQuery.removeEventListener('change', updatePreference);
+    };
   }, []);
 
   useEffect(() => {
     AOS.init({
-      duration: 800,
+      disable: prefersReducedMotion || window.innerWidth < 900,
+      duration: 560,
       easing: 'ease-out-cubic',
       once: true,
-      offset: 80,
+      offset: 48,
     });
-  }, []);
+  }, [prefersReducedMotion]);
 
   useEffect(() => {
-    if (!toast) {
-      return undefined;
-    }
+    let ticking = false;
 
-    const timeoutId = window.setTimeout(() => setToast(''), 4500);
-    return () => window.clearTimeout(timeoutId);
-  }, [toast]);
-
-  useEffect(() => {
     const onScroll = () => {
       const nextY = window.scrollY;
-      setIsScrolled(nextY > 24);
-      setHeroDepth(Math.min(nextY / 520, 1));
+
+      setIsScrolled((current) => {
+        const nextScrolled = nextY > 24;
+        return current === nextScrolled ? current : nextScrolled;
+      });
+
+      if (prefersReducedMotion || !heroShellRef.current || ticking) {
+        return;
+      }
+
+      ticking = true;
+      window.requestAnimationFrame(() => {
+        const depth = Math.min(nextY / 520, 1);
+        const heroShell = heroShellRef.current;
+
+        if (heroShell) {
+          heroShell.style.setProperty('--hero-depth', depth.toFixed(3));
+          heroShell.style.setProperty('--hero-rotate-x', `${(3.4 - depth * 2.2).toFixed(3)}deg`);
+          heroShell.style.setProperty('--hero-rotate-y', `${(-1.8 + depth * 1.1).toFixed(3)}deg`);
+          heroShell.style.setProperty('--hero-frame-scale', (1.03 + depth * 0.035).toFixed(4));
+          heroShell.style.setProperty('--hero-video-scale', (1.02 + depth * 0.05).toFixed(4));
+          heroShell.style.setProperty('--hero-video-shift', `${Math.round(-46 + depth * -22)}px`);
+        }
+
+        ticking = false;
+      });
     };
 
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
-  }, []);
+  }, [prefersReducedMotion]);
 
   useEffect(() => {
     if (!isSplashVisible && !donationOpen && !volunteerRole && !volunteerSuccessRole && !mobileNavOpen) {
@@ -699,21 +762,29 @@ function App() {
   }, [donationOpen, isSplashVisible, mobileNavOpen, volunteerRole, volunteerSuccessRole]);
 
   useEffect(() => {
-    setPageStage('is-entering');
+    setPageStage(prefersReducedMotion ? 'is-visible' : 'is-entering');
     setMobileNavOpen(false);
-    window.scrollTo(0, 0);
+    window.scrollTo({ top: 0, left: 0, behavior: prefersReducedMotion ? 'auto' : 'auto' });
 
-    const timeoutId = window.setTimeout(() => setPageStage('is-visible'), 320);
+    if (prefersReducedMotion) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => setPageStage('is-visible'), 220);
     return () => window.clearTimeout(timeoutId);
-  }, [pathname]);
+  }, [pathname, prefersReducedMotion]);
 
   useEffect(() => {
+    if (prefersReducedMotion || window.innerWidth < 900) {
+      return undefined;
+    }
+
     const timeoutId = window.setTimeout(() => {
-      AOS.refreshHard();
-    }, 360);
+      AOS.refresh();
+    }, 180);
 
     return () => window.clearTimeout(timeoutId);
-  }, [pathname, pageStage, isSplashVisible]);
+  }, [pathname, pageStage, isSplashVisible, prefersReducedMotion]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -802,6 +873,66 @@ function App() {
     return () => controller.abort();
   }, []);
 
+  useEffect(() => {
+    let isDisposed = false;
+
+    const syncDonationFeed = async (primeOnly = false) => {
+      try {
+        const query = latestDonationTimestampRef.current
+          ? `?since=${encodeURIComponent(latestDonationTimestampRef.current)}`
+          : '?limit=12';
+
+        const response = await fetch(`/api/donations${query}`, {
+          cache: 'no-store',
+        });
+
+        if (!response.ok) {
+          throw new Error(`Donation feed request failed with ${response.status}`);
+        }
+
+        const payload = await response.json();
+        const donations = Array.isArray(payload.donations) ? payload.donations : [];
+
+        if (donations.length > 0) {
+          latestDonationTimestampRef.current = donations[donations.length - 1].receivedAt;
+        }
+
+        if (primeOnly || !donationFeedReadyRef.current || isDisposed) {
+          return;
+        }
+
+        donations.forEach((donation) => {
+          toast.info(
+            <DonationToastContent
+              title="New Donation"
+              body={`${donation.name} donated $${donation.donationAmount} from ${donation.donationCountry}${donation.comment ? ` • ${donation.comment}` : ''}`}
+            />,
+            {
+              autoClose: 5200,
+              closeOnClick: true,
+              pauseOnHover: true,
+            },
+          );
+        });
+      } catch {
+        return;
+      }
+    };
+
+    syncDonationFeed(true).finally(() => {
+      donationFeedReadyRef.current = true;
+    });
+
+    const intervalId = window.setInterval(() => {
+      syncDonationFeed(false);
+    }, 5000);
+
+    return () => {
+      isDisposed = true;
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
   const effectiveAmount = customAmount ? Number(customAmount) : selectedAmount;
   const canonicalPath = pageAliases[pathname] || pathname;
   const isImpactPage = canonicalPath === '/pages/global-reach';
@@ -823,7 +954,7 @@ function App() {
       const target = document.querySelector(nextHash);
       setMobileNavOpen(false);
       if (target) {
-        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        target.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth', block: 'start' });
       } else {
         router.push(targetUrl, { scroll: false });
       }
@@ -866,8 +997,16 @@ function App() {
 
     setDonationOpen(false);
     setFormError('');
-    setToast(
-      `Thank you for pledging $${effectiveAmount}${message ? ` with note: "${message}"` : ''}.`,
+    toast.success(
+      <DonationToastContent
+        title="Donation Received"
+        body={`Thank you for pledging $${effectiveAmount}${message ? ` • ${message}` : ''}.`}
+      />,
+      {
+        autoClose: 4200,
+        closeOnClick: true,
+        pauseOnHover: true,
+      },
     );
     setSelectedAmount(null);
     setCustomAmount('');
@@ -936,25 +1075,54 @@ function App() {
   const toggleHeroPlayback = () => {
     if (isHeroPlaying) {
       sendHeroCommand('pauseVideo');
+      heroAutoPausedRef.current = false;
       setIsHeroPlaying(false);
       return;
     }
 
     sendHeroCommand('playVideo');
+    heroAutoPausedRef.current = false;
     setIsHeroPlaying(true);
   };
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        if (isHeroPlaying) {
+          sendHeroCommand('pauseVideo');
+          heroAutoPausedRef.current = true;
+          setIsHeroPlaying(false);
+        }
+        return;
+      }
+
+      if (heroAutoPausedRef.current) {
+        sendHeroCommand('playVideo');
+        heroAutoPausedRef.current = false;
+        setIsHeroPlaying(true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isHeroPlaying]);
 
   return (
     <div className="page-shell">
       {isSplashVisible ? (
-        <div className="splash-screen" aria-hidden="true">
-          <img alt="United Athletes for Peace logo" className="splash-screen__logo" src="/logo.png" />
+        <div className={isSplashExiting ? 'splash-screen splash-screen--exiting' : 'splash-screen'} aria-hidden="true">
+          <div className="splash-screen__brand">
+            <img alt="United Athletes for Peace logo" className="splash-screen__logo" src="/logo-navbar-light.png" />
+          </div>
           <ClipLoader className="splash-screen__spinner" color="#0e1b4d" size={18} speedMultiplier={0.82} />
         </div>
       ) : null}
 
       <nav className={isScrolled ? 'navbar navbar--scrolled' : 'navbar'}>
         <div className="navbar-shimmer"></div>
+        <div className="navbar-world" aria-hidden="true"></div>
         <div className="navbar-left">
           <a
             className="logo"
@@ -962,7 +1130,7 @@ function App() {
             onClick={(event) => handleInternalNavigation(event, '/')}
             style={{ textDecoration: 'none', display: 'flex', alignItems: 'center' }}
           >
-            <img className="logo__image" src="/logo-transparent.png" alt="United Athletes Logo" width="50" height="50" style={{ display: 'block', objectFit: 'contain' }} />
+            <img className="logo__image" src="/logo-navbar-light.png" alt="United Athletes Logo" width="50" height="50" style={{ display: 'block', objectFit: 'contain' }} />
           </a>
         </div>
 
@@ -1078,16 +1246,17 @@ function App() {
         ) : (
           <>
             <section className="hero" id="top">
-              <div
-                className="hero__shell"
-                style={{
-                  '--hero-depth': heroDepth,
-                  '--hero-rotate-x': `${3.4 - heroDepth * 2.2}deg`,
-                  '--hero-rotate-y': `${-1.8 + heroDepth * 1.1}deg`,
-                  '--hero-frame-scale': 1.03 + heroDepth * 0.035,
-                  '--hero-video-scale': 1.02 + heroDepth * 0.05,
-                  '--hero-video-shift': `${-46 + heroDepth * -22}px`,
-                }}
+                <div
+                  ref={heroShellRef}
+                  className="hero__shell"
+                  style={prefersReducedMotion ? {
+                    '--hero-depth': 0,
+                    '--hero-rotate-x': '0deg',
+                    '--hero-rotate-y': '0deg',
+                    '--hero-frame-scale': 1,
+                    '--hero-video-scale': 1.02,
+                    '--hero-video-shift': '-46px',
+                  } : undefined}
               >
                 <div className="hero__video-frame" aria-hidden="true">
                   <iframe
@@ -1224,7 +1393,7 @@ function App() {
                   ))}
                 </div>
                 <div className="donation-home__actions">
-                  <button className="button button--text" type="button" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+                  <button className="button button--text" type="button" onClick={() => window.scrollTo({ top: 0, behavior: prefersReducedMotion ? 'auto' : 'smooth' })}>
                     Maybe Later
                   </button>
                   <button className="button button--primary" type="button" onClick={() => setDonationOpen(true)}>
@@ -1323,7 +1492,20 @@ function App() {
         </div>
       </footer>
 
-      {toast ? <div className="toast">{toast}</div> : null}
+      <ToastContainer
+        autoClose={4200}
+        closeButton={false}
+        draggable={false}
+        hideProgressBar={false}
+        newestOnTop
+        pauseOnFocusLoss
+        pauseOnHover
+        position="bottom-right"
+        theme="dark"
+        toastClassName="site-toastify__toast"
+        bodyClassName="site-toastify__body"
+        progressClassName="site-toastify__progress"
+      />
 
       <DonationModal
         customAmount={customAmount}
@@ -2415,7 +2597,7 @@ function ConflictMap({ selectedZoneId, zones }) {
         zoomControl: false,
       }).setView([20, 0], 2);
 
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
         attribution: '',
         subdomains: 'abcd',
       }).addTo(map);
