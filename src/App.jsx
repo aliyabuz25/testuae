@@ -1,9 +1,11 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Menu, Transition } from '@headlessui/react';
 import AOS from 'aos';
 import { ClipLoader } from 'react-spinners';
+import { FiMail, FiShoppingCart, FiMenu, FiX } from 'react-icons/fi';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import {
@@ -108,6 +110,18 @@ const fallbackInstagramPosts = [
     url: 'https://www.instagram.com/p/DOwOdRdjStb/',
   },
 ];
+
+const projectZoneToSplashPoint = (zone) => {
+  const [latitude, longitude] = zone.coordinates;
+
+  return {
+    id: zone.id,
+    name: zone.name,
+    region: zone.region,
+    x: ((longitude + 180) / 360) * 100,
+    y: ((90 - latitude) / 180) * 100,
+  };
+};
 
 const pageAliases = {
   '/pages/join-movement': '/pages/join-our-movement',
@@ -645,6 +659,8 @@ function App() {
   const [isSplashVisible, setIsSplashVisible] = useState(true);
   const [isSplashExiting, setIsSplashExiting] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [activeDropdown, setActiveDropdown] = useState(null);
+  const [cartOpen, setCartOpen] = useState(false);
   const [donationOpen, setDonationOpen] = useState(false);
   const [volunteerRole, setVolunteerRole] = useState(null);
   const [isScrolled, setIsScrolled] = useState(false);
@@ -664,11 +680,14 @@ function App() {
   const [tickerItems, setTickerItems] = useState(fallbackTickerItems);
   const [liveZones, setLiveZones] = useState(conflictZones);
   const [instagramPosts, setInstagramPosts] = useState(fallbackInstagramPosts);
+  const [activeSplashZoneIndex, setActiveSplashZoneIndex] = useState(0);
 
   const regionZones = useMemo(
     () => liveZones.filter((zone) => zone.region === activeRegion),
     [activeRegion, liveZones],
   );
+  const splashZones = useMemo(() => liveZones.map(projectZoneToSplashPoint), [liveZones]);
+  const activeSplashZone = splashZones[activeSplashZoneIndex % Math.max(splashZones.length, 1)] ?? null;
 
   useEffect(() => {
     setSelectedZoneId(regionZones[0]?.id ?? null);
@@ -681,13 +700,25 @@ function App() {
     }
 
     const exitTimeoutId = window.setTimeout(() => setIsSplashExiting(true), 820);
-    const hideTimeoutId = window.setTimeout(() => setIsSplashVisible(false), 1560);
+    const hideTimeoutId = window.setTimeout(() => setIsSplashVisible(false), 2400);
 
     return () => {
       window.clearTimeout(exitTimeoutId);
       window.clearTimeout(hideTimeoutId);
     };
   }, [prefersReducedMotion]);
+
+  useEffect(() => {
+    if (!isSplashVisible || prefersReducedMotion || splashZones.length <= 1) {
+      return undefined;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setActiveSplashZoneIndex((current) => (current + 1) % splashZones.length);
+    }, 2800);
+
+    return () => window.clearInterval(intervalId);
+  }, [isSplashVisible, prefersReducedMotion, splashZones]);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -750,7 +781,7 @@ function App() {
   }, [prefersReducedMotion]);
 
   useEffect(() => {
-    if (!isSplashVisible && !donationOpen && !volunteerRole && !volunteerSuccessRole && !mobileNavOpen) {
+    if (!isSplashVisible && !cartOpen && !donationOpen && !volunteerRole && !volunteerSuccessRole && !mobileNavOpen) {
       document.body.style.overflow = '';
       return undefined;
     }
@@ -759,11 +790,13 @@ function App() {
     return () => {
       document.body.style.overflow = '';
     };
-  }, [donationOpen, isSplashVisible, mobileNavOpen, volunteerRole, volunteerSuccessRole]);
+  }, [cartOpen, donationOpen, isSplashVisible, mobileNavOpen, volunteerRole, volunteerSuccessRole]);
 
   useEffect(() => {
     setPageStage(prefersReducedMotion ? 'is-visible' : 'is-entering');
     setMobileNavOpen(false);
+    setActiveDropdown(null);
+    setCartOpen(false);
     window.scrollTo({ top: 0, left: 0, behavior: prefersReducedMotion ? 'auto' : 'auto' });
 
     if (prefersReducedMotion) {
@@ -773,6 +806,21 @@ function App() {
     const timeoutId = window.setTimeout(() => setPageStage('is-visible'), 220);
     return () => window.clearTimeout(timeoutId);
   }, [pathname, prefersReducedMotion]);
+
+  useEffect(() => {
+    if (!cartOpen) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setCartOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [cartOpen]);
 
   useEffect(() => {
     if (prefersReducedMotion || window.innerWidth < 900) {
@@ -1013,6 +1061,14 @@ function App() {
     setMessage('');
   };
 
+  const setToast = (content) => {
+    toast.info(content, {
+      autoClose: 4200,
+      closeOnClick: true,
+      pauseOnHover: true,
+    });
+  };
+
   const openVolunteerForm = (role) => {
     setVolunteerRole(role);
     setVolunteerSuccessRole(null);
@@ -1112,125 +1168,238 @@ function App() {
   return (
     <div className="page-shell">
       {isSplashVisible ? (
-        <div className={isSplashExiting ? 'splash-screen splash-screen--exiting' : 'splash-screen'} aria-hidden="true">
-          <div className="splash-screen__brand">
-            <img alt="United Athletes for Peace logo" className="splash-screen__logo" src="/logo-navbar-light.png" />
+        <div className={isSplashExiting ? 'splash-v2 splash-v2--exiting' : 'splash-v2'} aria-hidden="true">
+          <video
+            autoPlay
+            className="splash-v2__bg"
+            loop
+            muted
+            playsInline
+            src="https://player.vimeo.com/external/324831610.sd.mp4?s=8b7f5e3b5e40e87d81373e970222e96d195a6ec4&profile_id=164&oauth2_token_id=57447761"
+          />
+          <div className="splash-v2__overlay" />
+          <div className="splash-v2__text-grid">
+            <div className="splash-v2__text-row splash-v2__text-row--scroll-left">
+              {liveZones.map((z) => (
+                <span key={`l1-${z.id}`} className="splash-v2__text-item">{z.name}</span>
+              ))}
+              {liveZones.map((z) => (
+                <span key={`l1-r-${z.id}`} className="splash-v2__text-item">{z.name}</span>
+              ))}
+            </div>
+            <div className="splash-v2__text-row splash-v2__text-row--scroll-right">
+              {liveZones.map((z) => (
+                <span key={`l2-${z.id}`} className="splash-v2__text-item">{z.name}</span>
+              ))}
+              {liveZones.map((z) => (
+                <span key={`l2-r-${z.id}`} className="splash-v2__text-item">{z.name}</span>
+              ))}
+            </div>
           </div>
-          <ClipLoader className="splash-screen__spinner" color="#0e1b4d" size={18} speedMultiplier={0.82} />
+          <div className="splash-v2__content">
+            <div className="splash-v2__brand">
+              <img alt="United Athletes for Peace logo" className="splash-v2__logo" src="/uap-logo-ultra-transparent.png" />
+              <div className="splash-v2__title">United Athletes for Peace</div>
+            </div>
+            <div className="splash-v2__routing">
+              <div className="splash-v2__routing-line" />
+              <div className="splash-v2__routing-status">United through sport, dedicated to peace</div>
+            </div>
+          </div>
+          <div className="splash-v2__footer">
+            <div className="splash-v2__meta">Since 2025</div>
+            <div className="splash-v2__meta">UnitedAthletesForPeace.org</div>
+          </div>
         </div>
       ) : null}
 
       <nav className={isScrolled ? 'navbar navbar--scrolled' : 'navbar'}>
-        <div className="navbar-shimmer"></div>
-        <div className="navbar-world" aria-hidden="true"></div>
-        <div className="navbar-left">
-          <a
-            className="logo"
-            href="/"
-            onClick={(event) => handleInternalNavigation(event, '/')}
-            style={{ textDecoration: 'none', display: 'flex', alignItems: 'center' }}
-          >
-            <img className="logo__image" src="/logo-navbar-light.png" alt="United Athletes Logo" width="50" height="50" style={{ display: 'block', objectFit: 'contain' }} />
-          </a>
-        </div>
+        <div className="navbar__container">
+          <div className="navbar__left">
+            <button className="navbar__logo-link" onClick={() => navigateTo('/')}>
+              <img alt="United Athletes for Peace" className="navbar__logo" src="/uap-logo-ultra-transparent.png" />
+            </button>
+          </div>
 
-        <div className="navbar-center">
-          <ul className="nav-links">
-            {navigation.map((item) => (
-              <li className={item.children ? 'nav-item nav-item--has-children' : 'nav-item'} key={item.label}>
-                <a href={item.href} onClick={(event) => handleInternalNavigation(event, item.href)}>
-                  {item.label}
-                </a>
-                {item.children ? (
-                  <div className="nav-dropdown">
-                    {item.children.map((child) => (
-                      <a
-                        className="nav-dropdown__link"
-                        href={child.href}
-                        key={child.label}
-                        onClick={(event) => handleInternalNavigation(event, child.href)}
-                      >
-                        {child.label}
-                      </a>
-                    ))}
-                  </div>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="navbar-right">
-          <button className="members-button" type="button" onClick={() => setDonationOpen(true)}>
-            <img
-              src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Red%20Heart.png"
-              alt="Heart"
-              width="22"
-              height="22"
-              style={{ filter: 'drop-shadow(0 3px 6px rgba(14, 27, 77, 0.2))' }}
-            />
-            Donate
-          </button>
-          <button
-            aria-expanded={mobileNavOpen}
-            aria-label="Toggle menu"
-            className="navbar-toggler"
-            type="button"
-            onClick={() => setMobileNavOpen((current) => !current)}
-          >
-            {mobileNavOpen ? (
-              <svg viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" fill="none">
-                <line x1="5" y1="5" x2="19" y2="19"></line>
-                <line x1="19" y1="5" x2="5" y2="19"></line>
-              </svg>
-            ) : (
-              <svg viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" fill="none">
-                <line x1="3" y1="7" x2="21" y2="7"></line>
-                <line x1="3" y1="12" x2="21" y2="12"></line>
-                <line x1="3" y1="17" x2="21" y2="17"></line>
-              </svg>
-            )}
-          </button>
-        </div>
-
-        {mobileNavOpen ? (
-          <div className="mobile-nav-overlay" role="presentation" onClick={() => setMobileNavOpen(false)}>
-            <div className="mobile-nav" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-              <div className="mobile-nav__header">
-                <span>Menu</span>
-                <button
-                  aria-label="Close menu"
-                  className="mobile-nav__close"
-                  type="button"
-                  onClick={() => setMobileNavOpen(false)}
-                >
-                  ×
-                </button>
-              </div>
+          <div className="navbar__center">
+            <ul className="navbar__menu">
               {navigation.map((item) => (
-                <div className="mobile-nav__group" key={item.label}>
-                  <a href={item.href} onClick={(event) => handleInternalNavigation(event, item.href)}>
-                    {item.label}
-                  </a>
+                <li className="navbar__item" key={item.label}>
                   {item.children ? (
-                    <div className="mobile-nav__children">
-                      {item.children.map((child) => (
-                        <a
-                          href={child.href}
-                          key={child.label}
-                          onClick={(event) => handleInternalNavigation(event, child.href)}
-                        >
+                    <Menu as="div" className="navbar__dropdown-wrapper">
+                      <Menu.Button className="navbar__link">
+                        {item.label} <span className="navbar__arrow">▾</span>
+                      </Menu.Button>
+                      <Transition
+                        as={Fragment}
+                        enter="transition-fade-in"
+                        enterFrom="opacity-0 dropdown-enter"
+                        enterTo="opacity-100 dropdown-visible"
+                        leave="transition-fade-out"
+                        leaveFrom="opacity-100 dropdown-visible"
+                        leaveTo="opacity-0 dropdown-enter"
+                      >
+                        <Menu.Items className="navbar__dropdown">
+                          {item.children.map((child) => (
+                            <Menu.Item key={child.label}>
+                              {({ active }) => (
+                                <button
+                                  className={active ? 'navbar__dropdown-link navbar__dropdown-link--active' : 'navbar__dropdown-link'}
+                                  onClick={() => navigateTo(child.href)}
+                                >
+                                  {child.label}
+                                </button>
+                              )}
+                            </Menu.Item>
+                          ))}
+                        </Menu.Items>
+                      </Transition>
+                    </Menu>
+                  ) : (
+                    <button className="navbar__link" onClick={() => navigateTo(item.href)}>
+                      {item.label}
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="navbar__right">
+            <div className="navbar__icons">
+              <button className="navbar__icon-btn" title="Contact Us" onClick={() => navigateTo('/pages/contact')}>
+                <FiMail size={22} />
+              </button>
+              <button className="navbar__icon-btn" title="Shop" onClick={() => setCartOpen(true)}>
+                <FiShoppingCart size={22} />
+              </button>
+            </div>
+            <button className="navbar__donate-btn" onClick={() => navigateTo('/pages/donation')}>
+              <span className="navbar__donate-heart">❤️</span> <span className="navbar__donate-text">Donate</span>
+            </button>
+            <button className="navbar__mobile-toggle" onClick={() => setMobileNavOpen((curr) => !curr)}>
+              {mobileNavOpen ? <FiX size={26} /> : <FiMenu size={26} />}
+            </button>
+          </div>
+        </div>
+
+        {/* Mobile Menu Drawer */}
+        <Transition
+          show={mobileNavOpen}
+          as={Fragment}
+          enter="transition-mobile-enter"
+          enterFrom="mobile-enter"
+          enterTo="mobile-visible"
+          leave="transition-mobile-leave"
+          leaveFrom="mobile-visible"
+          leaveTo="mobile-enter"
+        >
+          <div className="navbar__mobile-drawer">
+            <ul className="navbar__mobile-menu">
+              {navigation.map((item) => (
+                <li key={item.label} className="navbar__mobile-item">
+                  <button className="navbar__mobile-link" onClick={() => { navigateTo(item.href); setMobileNavOpen(false); }}>
+                    {item.label}
+                  </button>
+                  {item.children && (
+                    <div className="navbar__mobile-sub">
+                      {item.children.map(child => (
+                        <button key={child.label} className="navbar__mobile-sublink" onClick={() => { navigateTo(child.href); setMobileNavOpen(false); }}>
                           {child.label}
-                        </a>
+                        </button>
                       ))}
                     </div>
-                  ) : null}
-                </div>
+                  )}
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
-        ) : null}
+        </Transition>
       </nav>
+
+      <Transition
+        show={cartOpen}
+        as={Fragment}
+        enter="transition-fade-in"
+        enterFrom="opacity-0"
+        enterTo="opacity-100"
+        leave="transition-fade-out"
+        leaveFrom="opacity-100"
+        leaveTo="opacity-0"
+      >
+        <div className="cart-offcanvas" role="presentation" onClick={() => setCartOpen(false)}>
+          <Transition.Child
+            as={Fragment}
+            enter="transition-cart-enter"
+            enterFrom="cart-offcanvas__panel--hidden"
+            enterTo="cart-offcanvas__panel--visible"
+            leave="transition-cart-leave"
+            leaveFrom="cart-offcanvas__panel--visible"
+            leaveTo="cart-offcanvas__panel--hidden"
+          >
+            <aside
+              aria-label="Support cart"
+              aria-modal="true"
+              className="cart-offcanvas__panel"
+              role="dialog"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="cart-offcanvas__header">
+                <div>
+                  <p className="cart-offcanvas__eyebrow">Support Cart</p>
+                  <h2>Cart is currently empty</h2>
+                </div>
+                <button
+                  aria-label="Close cart"
+                  className="cart-offcanvas__close"
+                  type="button"
+                  onClick={() => setCartOpen(false)}
+                >
+                  <FiX size={22} />
+                </button>
+              </div>
+
+              <div className="cart-offcanvas__body">
+                <p className="cart-offcanvas__intro">
+                  There are currently no products available in the system.
+                </p>
+                <div className="cart-offcanvas__empty-state">
+                  <div className="cart-offcanvas__empty-badge">No items yet</div>
+                  <p className="cart-offcanvas__empty-copy">
+                    When purchases become available, they will not be used for profit. All proceeds
+                    will be directed entirely toward supporting the mission and related humanitarian
+                    efforts.
+                  </p>
+                </div>
+              </div>
+
+              <div className="cart-offcanvas__footer">
+                <button
+                  className="cart-offcanvas__secondary"
+                  type="button"
+                  onClick={() => {
+                    setCartOpen(false);
+                    navigateTo('/pages/contact');
+                  }}
+                >
+                  Contact Us
+                </button>
+                <button
+                  className="cart-offcanvas__primary"
+                  type="button"
+                  onClick={() => {
+                    setCartOpen(false);
+                    navigateTo('/pages/donation');
+                  }}
+                >
+                  Open Donation Page
+                </button>
+              </div>
+            </aside>
+          </Transition.Child>
+        </div>
+      </Transition>
+
 
       <main className={`page-transition ${pageStage}`}>
         {isImpactPage ? (
@@ -2331,9 +2500,8 @@ function DistinguishedAmbassadorsPage({ page }) {
             ) : (
               <>
                 <div className="ambassadors-directory__summary">
-                  <span>{athleteCount} athlete profiles</span>
-                  <span>{mentorCount} coach and mentor profiles</span>
-                  <span>{totalPages} pages</span>
+                  <span>{athleteCount} Athletes</span>
+                  <span>{mentorCount} Mentors</span>
                 </div>
 
                 <div className="ambassadors-directory__filters">
@@ -2399,6 +2567,13 @@ function DistinguishedAmbassadorsPage({ page }) {
                 ) : (
                   <div className="ambassadors-table-shell">
                     <table className="ambassadors-table">
+                      <colgroup>
+                        <col className="ambassadors-table__col ambassadors-table__col--rank" />
+                        <col className="ambassadors-table__col ambassadors-table__col--name" />
+                        <col className="ambassadors-table__col ambassadors-table__col--country" />
+                        <col className="ambassadors-table__col ambassadors-table__col--sport" />
+                        <col className="ambassadors-table__col ambassadors-table__col--achievement" />
+                      </colgroup>
                       <thead>
                         <tr>
                           <th scope="col">Rank</th>
@@ -2420,26 +2595,35 @@ function DistinguishedAmbassadorsPage({ page }) {
                               </td>
                               <td>
                                 <div className="ambassador-cell ambassador-cell--name">
+                                  <span className="ambassador-cell__avatar" aria-hidden="true">
+                                    {ambassador.name.charAt(0)}
+                                  </span>
+                                  <div className="ambassador-cell__stack">
+                                    <span className="ambassador-cell__name">{ambassador.name}</span>
+                                    <span className="ambassador-cell__subtle">{ambassador.category === 'mentor' ? 'Coach / Mentor' : 'Athlete'}</span>
+                                  </div>
+                                </div>
+                              </td>
+                              <td>
+                                <div className="ambassador-country">
                                   <span className="ambassador-cell__flag" aria-hidden="true">
                                     {getCountryFlag(ambassador.countryCode)}
                                   </span>
-                                  <span className="ambassador-cell__name">{ambassador.name}</span>
+                                  <span className="ambassador-country__label">{ambassador.country}</span>
                                 </div>
                               </td>
-                              <td>{ambassador.country}</td>
                               <td>
-                                <span className="ambassador-pill">
+                                <div className="ambassador-sport">
                                   <span aria-label={sportIcon.label} role="img">
                                     {sportIcon.symbol}
                                   </span>
                                   <span>{ambassador.sport}</span>
-                                </span>
+                                </div>
                               </td>
                               <td>
-                                <span className="ambassador-pill ambassador-pill--role">
-                                  <AchievementIcons icons={ambassador.roleMeta.icons} />
-                                  <span>{ambassador.roleMeta.cleanTitle}</span>
-                                </span>
+                                <div className="ambassador-achievement">
+                                  <span className="ambassador-achievement__text">{ambassador.roleMeta.cleanTitle}</span>
+                                </div>
                               </td>
                             </tr>
                           );
@@ -2450,27 +2634,27 @@ function DistinguishedAmbassadorsPage({ page }) {
                 )}
 
                 {filteredAmbassadors.length > 0 ? (
-                  <div className="ambassadors-pagination">
-                    <button type="button" onClick={() => setCurrentPage(1)} disabled={currentPage === 1}>
-                      First
-                    </button>
-                    <button type="button" onClick={() => setCurrentPage((pageNumber) => Math.max(1, pageNumber - 1))} disabled={currentPage === 1}>
-                      Prev
-                    </button>
-                    <span className="ambassadors-pagination__info">
-                      {visibleRangeStart}-{visibleRangeEnd} of {filteredAmbassadors.length} | Page {currentPage} / {totalPages}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setCurrentPage((pageNumber) => Math.min(totalPages, pageNumber + 1))}
-                      disabled={currentPage === totalPages}
-                    >
-                      Next
-                    </button>
-                    <button type="button" onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages}>
-                      Last
-                    </button>
-                  </div>
+                    <div className="ambassadors-pagination">
+                      <button type="button" onClick={() => setCurrentPage(1)} disabled={currentPage === 1}>
+                        First
+                      </button>
+                      <button type="button" onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1}>
+                        Prev
+                      </button>
+                      <div className="ambassadors-pagination__info">
+                        Page {currentPage} of {totalPages}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages}
+                      >
+                        Next
+                      </button>
+                      <button type="button" onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages}>
+                        Last
+                      </button>
+                    </div>
                 ) : null}
               </>
             )}

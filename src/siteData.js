@@ -20,14 +20,14 @@ export const navigation = [
     ],
   },
   {
-    label: 'Ambassadors',
+    label: '🥇 Gold Ambassadors',
     href: '/pages/gold-ambassadors-info',
     children: [
       { label: 'Gold Ambassadors', href: '/pages/gold-ambassadors-info' },
       { label: 'Distinguished Ambassadors', href: '/pages/distinguished-ambassadors' },
     ],
   },
-  { label: 'Contact', href: '/pages/contact' },
+  { label: '🛒 Shop', href: '/pages/shop' },
 ];
 
 export const heroStats = [
@@ -97,20 +97,6 @@ export const regions = [
 ];
 
 export const conflictZones = [
-  {
-    id: 'afghanistan',
-    name: 'Afghanistan',
-    coordinates: [33.9391, 67.71],
-    description: 'Taliban rule, ISIS-K insurgency, and resistance movements.',
-    region: 'asia',
-  },
-  {
-    id: 'myanmar',
-    name: 'Myanmar',
-    coordinates: [21.9162, 95.956],
-    description: 'Military coup, ethnic conflicts, and civil war.',
-    region: 'asia',
-  },
   {
     id: 'kashmir',
     name: 'Kashmir',
@@ -235,6 +221,13 @@ export const conflictZones = [
     name: 'Yemen',
     coordinates: [15.5527, 48.5164],
     description: 'Civil war and humanitarian crisis.',
+    region: 'middle-east',
+  },
+  {
+    id: 'iran',
+    name: 'Iran',
+    coordinates: [32.4279, 53.688],
+    description: 'Ongoing tensions, civil protests, and regional instability.',
     region: 'middle-east',
   },
 ];
